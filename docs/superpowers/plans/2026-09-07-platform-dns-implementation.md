@@ -539,3 +539,48 @@ Expected: ledger/dashboard data loads (a real API call against `servers/api` suc
 - [ ] **Step 3: Confirm the old CloudFront URL still works**
 
 Open `https://<distribution-id>.cloudfront.net`, sign in. Expected: still works exactly as before this pass — its redirect URI was never removed.
+
+---
+
+### Task 9: Fix `VITE_REDIRECT_URI` and redeploy `web-client`
+
+Added mid-execution: Task 8's verification surfaced a real plan gap. Task 6/7 updated Entra's *allowlist* of valid redirect URIs, but never touched `clients/app/.env.dev`'s `VITE_REDIRECT_URI` — a build-time-baked value (loaded by Vite's `--mode dev`, used by `platform/web-client`'s `deploy` script via `npm run build:dev`) that controls the single redirect URI MSAL actually *requests* on sign-in. Left pointed at the old CloudFront domain, sign-in initiated from `money.kkbae.com` would still complete but bounce back to the CloudFront domain instead of staying on the new one.
+
+**Files:**
+- Modify: `clients/app/.env.dev`
+
+**Interfaces:**
+- Consumes: none new.
+- Produces: the deployed SPA's MSAL config requests `https://money.kkbae.com/` as its redirect URI instead of the CloudFront domain.
+
+- [ ] **Step 1: Update `clients/app/.env.dev`**
+
+Change:
+```
+VITE_REDIRECT_URI=https://d91s2th9i95hi.cloudfront.net/
+```
+to:
+```
+VITE_REDIRECT_URI=https://money.kkbae.com/
+```
+
+- [ ] **Step 2: Build the client and confirm the value is baked in**
+
+Run (from `clients/app/`): `npm run build:dev`
+Expected: build succeeds; `grep -o 'https://money.kkbae.com/' dist/assets/*.js` (or similar) finds the new value in the built output, and the old CloudFront URL is no longer present as the configured `redirectUri` (it may still appear elsewhere, e.g. as a comment or the `.env.dev` file itself outside `dist/`, which does not matter — only the built JS output matters).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add clients/app/.env.dev
+git commit -m "Point the dev SPA's MSAL redirect URI at money.kkbae.com"
+```
+
+- [ ] **Step 4: Get explicit user confirmation, then redeploy `platform/web-client`**
+
+Run (from `platform/web-client/`): `npm run deploy`
+Expected: rebuilds the client (picking up the new `.env.dev` value) and redeploys — same distribution, no infrastructure changes, just new S3 content + CloudFront invalidation.
+
+- [ ] **Step 5: Re-verify sign-in on both domains**
+
+Repeat Task 8 Steps 1-3: sign in on `https://money.kkbae.com` (should now redirect back to itself, not the CloudFront domain) and confirm `https://<distribution-id>.cloudfront.net` still works too.
