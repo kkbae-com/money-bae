@@ -9,6 +9,7 @@ export class DnsStack extends cdk.Stack {
     const zone = new route53.HostedZone(this, 'KkbaeZone', {
       zoneName: 'kkbae.com',
     });
+    zone.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
 
     new cdk.CfnOutput(this, 'HostedZoneId', { value: zone.hostedZoneId });
     new cdk.CfnOutput(this, 'NameServers', {

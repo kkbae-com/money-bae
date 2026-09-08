@@ -9,6 +9,10 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import { Construct } from 'constructs';
 
+// Hardcoded to the dev domain — this stack is deployed once, as
+// MoneyBaeWebClient-Dev. A future -c env=prod deploy would collide on
+// this CloudFront alias (CNAMEAlreadyExists); parameterize this per
+// env (e.g. a stack prop) before a second environment is ever deployed.
 const SITE_DOMAIN = 'money.kkbae.com';
 // From platform/dns's `MoneyBaeDns` stack's `HostedZoneId` output (Task 2
 // of docs/superpowers/plans/2026-09-07-platform-dns-implementation.md).
