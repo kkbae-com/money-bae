@@ -40,7 +40,7 @@ module "spa_dev" {
   source = "./modules/spa-registration"
 
   display_name                    = "money-bae-dev"
-  redirect_uris                   = concat([var.dev_redirect_uri], local.common_redirect_uris)
+  redirect_uris                   = concat(var.dev_redirect_uri, local.common_redirect_uris)
   api_client_id                   = module.api_dev.client_id
   api_scope_id                    = module.api_dev.scope_id
   api_service_principal_object_id = module.api_dev.service_principal_object_id
