@@ -12,9 +12,12 @@ variable "local_redirect_uri" {
 }
 
 variable "dev_redirect_uri" {
-  type        = string
-  description = "SPA redirect URI for the dev environment: the web client's deployed CloudFront domain (MoneyBaeWebClient-Dev stack's DistributionDomainName output). No custom domain exists yet, so this is pinned to the actual distribution's domain rather than computed — needs a manual update if the distribution is ever replaced."
+  type        = list(string)
+  description = "SPA redirect URIs for the dev environment: the web client's deployed CloudFront domain (MoneyBaeWebClient-Dev stack's DistributionDomainName output) plus the money.kkbae.com custom domain (see platform/dns and platform/web-client). Append future entries here rather than replacing existing ones."
   # Trailing slash required: Entra rejects a redirect URI with no path
   # segment unless it ends in "/".
-  default = "https://d91s2th9i95hi.cloudfront.net/"
+  default = [
+    "https://d91s2th9i95hi.cloudfront.net/",
+    "https://money.kkbae.com/",
+  ]
 }
