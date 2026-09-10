@@ -60,8 +60,12 @@ const apiRequest = {
 
 // Used by data/api.ts for every request — acquires (silently refreshing if
 // needed) an access token for the money-bae API, scoped to whichever
-// account is currently signed in.
-export async function getAccessToken(): Promise<string> {
+// account is currently signed in. Pass forceRefresh to bypass the cached
+// token (data/api.ts does this after a 401, in case the cached token is
+// stale in a way MSAL itself didn't detect).
+export async function getAccessToken(
+  options: { forceRefresh?: boolean } = {},
+): Promise<string> {
   const account =
     msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0]
   // tsconfig doesn't set noUncheckedIndexedAccess, so TS types
@@ -76,13 +80,22 @@ export async function getAccessToken(): Promise<string> {
     const result = await msalInstance.acquireTokenSilent({
       ...apiRequest,
       account,
+      forceRefresh: options.forceRefresh ?? false,
     })
     return result.accessToken
   } catch (err) {
     if (err instanceof InteractionRequiredAuthError) {
       // Navigates away — acquireTokenRedirect never resolves on this page.
       await msalInstance.acquireTokenRedirect({ ...apiRequest, account })
+      throw err
     }
-    throw err
+    // Not (yet) known to require interaction — could be a transient
+    // failure (blocked hidden iframe, network blip, a concurrent renewal
+    // already in flight elsewhere). One forced retry before giving up, so
+    // a single hiccup doesn't strand the app until a manual reload.
+    if (options.forceRefresh) {
+      throw err
+    }
+    return getAccessToken({ forceRefresh: true })
   }
 }

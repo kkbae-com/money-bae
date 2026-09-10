@@ -105,9 +105,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-async function requestOnce<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await getAccessToken()
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+async function fetchWithToken(
+  path: string,
+  init: RequestInit | undefined,
+  token: string,
+): Promise<Response> {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -115,6 +118,18 @@ async function requestOnce<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   })
+}
+
+async function requestOnce<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await getAccessToken()
+  let res = await fetchWithToken(path, init, token)
+  if (res.status === 401) {
+    // The cached token MSAL handed us didn't actually work against the
+    // API — force a fresh one and retry once before giving up, instead of
+    // failing every call until the user manually reloads.
+    const refreshedToken = await getAccessToken({ forceRefresh: true })
+    res = await fetchWithToken(path, init, refreshedToken)
+  }
   if (!res.ok) {
     throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`)
   }
