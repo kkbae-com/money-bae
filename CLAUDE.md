@@ -9,7 +9,7 @@ money-bae is a personal finance app, structured as a monorepo:
 - `platform/db/` — Terraform for the shared Azure Postgres server backing both `tui/` and `servers/api/`. See `platform/db/CLAUDE.md`.
 - `platform/entra-external-id/` — Terraform for the shared Entra External ID (CIAM) tenant and app registrations. See `platform/entra-external-id/CLAUDE.md`.
 - `platform/api/` — CDK app deploying `servers/api/` to AWS App Runner. See `servers/api/CLAUDE.md`'s Deploy section.
-- `platform/web-client/` — CDK app deploying `clients/app/` to AWS (S3 + CloudFront).
+- `platform/web-client/` — CDK app deploying `clients/app/` to AWS (S3 + CloudFront), aliased to `https://money.kkbae.com`. See `platform/web-client/README.md`.
 - `platform/dns/` — CDK app owning the `kkbae.com` Route 53 public hosted zone; consuming stacks (like `platform/web-client`) import the zone by ID. See `platform/dns/README.md`.
 
 Each project's own CLAUDE.md/AGENTS.md/README.md has the details for working within it.
