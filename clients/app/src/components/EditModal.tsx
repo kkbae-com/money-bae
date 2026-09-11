@@ -596,38 +596,55 @@ export function EditModal() {
           <div className="flex flex-col gap-[11px]">
             <div className="field">
               <label>Bill</label>
-              <select
-                className="input mono"
-                value={ledgerBillForm.billId}
-                onChange={(e) => {
-                  const billId = e.target.value
-                  if (billId === GENERIC_EXPENSE_VALUE) {
-                    setLedgerBillForm((f) => ({ ...f, billId }))
-                    return
+              {store.modalMode === 'Edit' ? (
+                // Which bill/expense an entry is tied to can't change after
+                // creation — a disabled <select> still looks interactive
+                // (and is easy to misread), so show the resolved name as
+                // plain locked text instead.
+                <input
+                  className="input mono"
+                  value={
+                    store.selectedLedgerBill?.bill?.name ??
+                    store.selectedLedgerBill?.name ??
+                    ''
                   }
-                  const bill = store.bills.find((b) => b.id === billId)
-                  setLedgerBillForm((f) => ({
-                    ...f,
-                    billId,
-                    amount: bill
-                      ? moneyToNumber(bill.amount).toFixed(2)
-                      : f.amount,
-                    dueDay:
-                      bill?.dueDay != null ? String(bill.dueDay) : f.dueDay,
-                  }))
-                }}
-                disabled={store.modalMode === 'Edit'}
-              >
-                <option value="" disabled>
-                  Select a bill…
-                </option>
-                <option value={GENERIC_EXPENSE_VALUE}>Generic expense</option>
-                {store.bills.map((bill) => (
-                  <option key={bill.id} value={bill.id}>
-                    {bill.name}
+                  disabled
+                />
+              ) : (
+                <select
+                  className="input mono"
+                  value={ledgerBillForm.billId}
+                  onChange={(e) => {
+                    const billId = e.target.value
+                    if (billId === GENERIC_EXPENSE_VALUE) {
+                      setLedgerBillForm((f) => ({ ...f, billId }))
+                      return
+                    }
+                    const bill = store.bills.find((b) => b.id === billId)
+                    setLedgerBillForm((f) => ({
+                      ...f,
+                      billId,
+                      amount: bill
+                        ? moneyToNumber(bill.amount).toFixed(2)
+                        : f.amount,
+                      dueDay:
+                        bill?.dueDay != null ? String(bill.dueDay) : f.dueDay,
+                    }))
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a bill…
                   </option>
-                ))}
-              </select>
+                  <option value={GENERIC_EXPENSE_VALUE}>
+                    Generic Expense
+                  </option>
+                  {store.bills.map((bill) => (
+                    <option key={bill.id} value={bill.id}>
+                      {bill.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             {ledgerBillForm.billId === GENERIC_EXPENSE_VALUE && (
               <div className="field">
