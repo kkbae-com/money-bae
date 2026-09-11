@@ -573,7 +573,8 @@ func ledgerHistoryHandler(db *gorm.DB) http.HandlerFunc {
 // GET /ledgers/{id}'s embedded ledgerBills.
 
 type ledgerBillRequest struct {
-	BillID  uuid.UUID   `json:"billId"`
+	BillID  *uuid.UUID  `json:"billId"`
+	Name    *string     `json:"name"`
 	Amount  money.Money `json:"amount"`
 	DueDay  *int        `json:"dueDay"`
 	IsPayed bool        `json:"isPayed"`
@@ -583,7 +584,8 @@ type ledgerBillRequest struct {
 type ledgerBillResponse struct {
 	ID        uuid.UUID   `json:"id"`
 	LedgerID  uuid.UUID   `json:"ledgerId"`
-	BillID    uuid.UUID   `json:"billId"`
+	BillID    *uuid.UUID  `json:"billId"`
+	Name      *string     `json:"name"`
 	Amount    money.Money `json:"amount"`
 	DueDay    *int        `json:"dueDay"`
 	IsPayed   bool        `json:"isPayed"`
@@ -597,6 +599,7 @@ func toLedgerBillResponse(lb models.LedgerBill) ledgerBillResponse {
 		ID:        lb.ID,
 		LedgerID:  lb.LedgerID,
 		BillID:    lb.BillID,
+		Name:      lb.Name,
 		Amount:    decimalToMoney(lb.Amount),
 		DueDay:    timeToDueDay(lb.DueDay),
 		IsPayed:   lb.IsPayed,
@@ -609,16 +612,23 @@ func toLedgerBillResponse(lb models.LedgerBill) ledgerBillResponse {
 // ledgerBillWithBill is what GET /ledgers/{id} embeds for each bill-in-cycle
 // — the ledger-bill's own fields plus the catalog Bill it references (name,
 // default amount, auto-pay, ...), since that's what the UI needs to render
-// the row without a second round trip.
+// the row without a second round trip. Bill is nil for a generic expense
+// (no catalog Bill behind it) — the UI falls back to the ledger-bill's own
+// Name in that case.
 type ledgerBillWithBill struct {
 	ledgerBillResponse
-	Bill billResponse `json:"bill"`
+	Bill *billResponse `json:"bill"`
 }
 
 func toLedgerBillWithBill(lb models.LedgerBill) ledgerBillWithBill {
+	var bill *billResponse
+	if lb.Bill != nil {
+		b := toBillResponse(*lb.Bill)
+		bill = &b
+	}
 	return ledgerBillWithBill{
 		ledgerBillResponse: toLedgerBillResponse(lb),
-		Bill:               toBillResponse(lb.Bill),
+		Bill:               bill,
 	}
 }
 
@@ -642,13 +652,22 @@ func decodeLedgerBillRequest(w http.ResponseWriter, r *http.Request, db *gorm.DB
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return models.LedgerBill{}, false
 	}
-	if req.BillID == uuid.Nil {
-		http.Error(w, "billId is required", http.StatusBadRequest)
-		return models.LedgerBill{}, false
-	}
-	if !billOwnedByUser(db, req.BillID, userID) {
-		http.Error(w, "bill not found", http.StatusBadRequest)
-		return models.LedgerBill{}, false
+	// A generic expense (billId absent) needs its own Name, since there's
+	// no catalog Bill to borrow one from; a real bill still needs its
+	// ownership checked, and its Name (if any) is ignored in favor of
+	// Bill.Name.
+	var name *string
+	if req.BillID != nil {
+		if !billOwnedByUser(db, *req.BillID, userID) {
+			http.Error(w, "bill not found", http.StatusBadRequest)
+			return models.LedgerBill{}, false
+		}
+	} else {
+		if req.Name == nil || *req.Name == "" {
+			http.Error(w, "name is required when billId is absent", http.StatusBadRequest)
+			return models.LedgerBill{}, false
+		}
+		name = req.Name
 	}
 	amount, ok := moneyToDecimal(req.Amount)
 	if !ok {
@@ -661,6 +680,7 @@ func decodeLedgerBillRequest(w http.ResponseWriter, r *http.Request, db *gorm.DB
 	}
 	return models.LedgerBill{
 		BillID:  req.BillID,
+		Name:    name,
 		Amount:  amount,
 		DueDay:  dueDayToTime(req.DueDay),
 		IsPayed: req.IsPayed,
@@ -749,6 +769,7 @@ func updateLedgerBillHandler(db *gorm.DB) http.HandlerFunc {
 		}
 
 		lb.BillID = req.BillID
+		lb.Name = req.Name
 		lb.Amount = req.Amount
 		lb.DueDay = req.DueDay
 		lb.IsPayed = req.IsPayed

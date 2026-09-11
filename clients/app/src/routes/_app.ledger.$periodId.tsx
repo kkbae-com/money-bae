@@ -33,6 +33,7 @@ function LedgerItemPage() {
   const [detail, setDetail] = useState<LedgerDetail | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [plannedExpanded, setPlannedExpanded] = useState(false)
 
   function reload() {
     getLedger(periodId)
@@ -81,6 +82,7 @@ function LedgerItemPage() {
     try {
       await updateLedgerBill(periodId, lb.id, {
         billId: lb.billId,
+        name: lb.name,
         amount: lb.amount,
         dueDay: lb.dueDay,
         isPayed: !lb.isPayed,
@@ -102,6 +104,7 @@ function LedgerItemPage() {
           .map((lb) =>
             updateLedgerBill(periodId, lb.id, {
               billId: lb.billId,
+              name: lb.name,
               amount: lb.amount,
               dueDay: lb.dueDay,
               isPayed: true,
@@ -172,6 +175,10 @@ function LedgerItemPage() {
     (sum, lb) => sum + moneyToNumber(lb.amount),
     0,
   )
+  const paidTotal = detail.ledgerBills
+    .filter((lb) => lb.isPayed)
+    .reduce((sum, lb) => sum + moneyToNumber(lb.amount), 0)
+  const unpaidTotal = expensesTotal - paidTotal
   const netTotal =
     moneyToNumber(detail.bankBalance) + incomeTotal - expensesTotal
 
@@ -193,7 +200,7 @@ function LedgerItemPage() {
             className="flex flex-col items-start gap-[8px] sm:flex-row sm:items-center"
             style={{ padding: '13px 16px' }}
           >
-            <span className="card-kicker mono">bills</span>
+            <span className="card-kicker mono">bills and expenses</span>
             <span
               className="mono"
               style={{ fontSize: 11, color: 'rgba(233,233,237,.4)' }}
@@ -237,7 +244,7 @@ function LedgerItemPage() {
                       onToggle={() => billSelection.toggle(lb.id)}
                     />
                   </td>
-                  <td>{lb.bill.name}</td>
+                  <td>{lb.bill?.name ?? lb.name}</td>
                   <td className="mono" style={{ textAlign: 'right' }}>
                     {formatCurrency(moneyToNumber(lb.amount))}
                   </td>
@@ -432,15 +439,49 @@ function LedgerItemPage() {
                 </span>
                 <span>{formatCurrency(incomeTotal)}</span>
               </div>
-              <div className="flex">
+              <div
+                className="flex"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setPlannedExpanded((v) => !v)}
+              >
                 <span
                   className="flex-1"
-                  style={{ color: 'rgba(233,233,237,.6)' }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    color: 'rgba(233,233,237,.6)',
+                  }}
                 >
-                  Expenses
+                  <span style={{ fontSize: 10, width: 10 }}>
+                    {plannedExpanded ? '▾' : '▸'}
+                  </span>
+                  Planned
                 </span>
-                <span>{formatCurrency(expensesTotal)}</span>
+                <span>{formatCurrency(-expensesTotal)}</span>
               </div>
+              {plannedExpanded && (
+                <>
+                  <div className="flex" style={{ paddingLeft: 14 }}>
+                    <span
+                      className="flex-1"
+                      style={{ color: 'rgba(233,233,237,.6)' }}
+                    >
+                      UnPaid
+                    </span>
+                    <span>{formatCurrency(-unpaidTotal)}</span>
+                  </div>
+                  <div className="flex" style={{ paddingLeft: 14 }}>
+                    <span
+                      className="flex-1"
+                      style={{ color: 'rgba(233,233,237,.6)' }}
+                    >
+                      Paid
+                    </span>
+                    <span>{formatCurrency(-paidTotal)}</span>
+                  </div>
+                </>
+              )}
             </div>
             <div
               className="h-px"

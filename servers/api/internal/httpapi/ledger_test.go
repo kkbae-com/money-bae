@@ -139,7 +139,7 @@ func TestGetLedger_IncludesIncomesAndLedgerBillsWithBill(t *testing.T) {
 	if err := db.Create(&bill).Error; err != nil {
 		t.Fatalf("failed to seed bill: %v", err)
 	}
-	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: bill.ID, Amount: decimal.NewFromInt(150000)}
+	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: &bill.ID, Amount: decimal.NewFromInt(150000)}
 	if err := db.Create(&lb).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestDeleteLedger_NullsIncomeLedgerIdAndCascadesLedgerBills(t *testing.T) {
 	if err := db.Create(&bill).Error; err != nil {
 		t.Fatalf("failed to seed bill: %v", err)
 	}
-	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: bill.ID, Amount: decimal.NewFromInt(150000)}
+	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: &bill.ID, Amount: decimal.NewFromInt(150000)}
 	if err := db.Create(&lb).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestCreateLedgerBill_Succeeds(t *testing.T) {
 	}
 
 	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+ledger.ID.String()+"/bills", ledgerBillRequest{
-		BillID: bill.ID,
+		BillID: &bill.ID,
 		Amount: *money.New(150000, "USD"),
 	})
 
@@ -282,7 +282,7 @@ func TestCreateLedgerBill_Succeeds(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("failed to decode response %q: %v", rec.Body.String(), err)
 	}
-	if got.LedgerID != ledger.ID || got.BillID != bill.ID {
+	if got.LedgerID != ledger.ID || got.BillID == nil || *got.BillID != bill.ID {
 		t.Fatalf("expected ledgerId %s and billId %s, got %+v", ledger.ID, bill.ID, got)
 	}
 }
@@ -308,7 +308,7 @@ func TestCreateLedgerBill_BillNotOwnedByUser_Returns400(t *testing.T) {
 	}
 
 	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+ledger.ID.String()+"/bills", ledgerBillRequest{
-		BillID: otherBill.ID,
+		BillID: &otherBill.ID,
 		Amount: *money.New(10000, "USD"),
 	})
 
@@ -338,7 +338,7 @@ func TestCreateLedgerBill_LedgerNotOwnedByUser_Returns404(t *testing.T) {
 	}
 
 	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+otherLedger.ID.String()+"/bills", ledgerBillRequest{
-		BillID: bill.ID,
+		BillID: &bill.ID,
 		Amount: *money.New(150000, "USD"),
 	})
 
@@ -362,13 +362,13 @@ func TestUpdateLedgerBill_TogglesPaid(t *testing.T) {
 	if err := db.Create(&bill).Error; err != nil {
 		t.Fatalf("failed to seed bill: %v", err)
 	}
-	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: bill.ID, Amount: decimal.NewFromInt(150000), IsPayed: false}
+	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: &bill.ID, Amount: decimal.NewFromInt(150000), IsPayed: false}
 	if err := db.Create(&lb).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}
 
 	rec := doJSON(t, router, http.MethodPut, "/ledgers/"+ledger.ID.String()+"/bills/"+lb.ID.String(), ledgerBillRequest{
-		BillID:  bill.ID,
+		BillID:  &bill.ID,
 		Amount:  *money.New(150000, "USD"),
 		IsPayed: true,
 	})
@@ -400,7 +400,7 @@ func TestDeleteLedgerBill_Succeeds(t *testing.T) {
 	if err := db.Create(&bill).Error; err != nil {
 		t.Fatalf("failed to seed bill: %v", err)
 	}
-	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: bill.ID, Amount: decimal.NewFromInt(150000)}
+	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: &bill.ID, Amount: decimal.NewFromInt(150000)}
 	if err := db.Create(&lb).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}
@@ -435,6 +435,129 @@ func TestDeleteLedgerBill_NotFound_Returns404(t *testing.T) {
 	}
 }
 
+func TestCreateLedgerBill_GenericExpense_Succeeds(t *testing.T) {
+	router, db := newLedgerTestRouter(t)
+	user := seedCurrentUser(t, db)
+
+	ledger := models.Ledger{
+		UserID: user.ID, Date: time.Now(),
+		BankBalance: decimal.Zero, Income: decimal.Zero, Expenses: decimal.Zero,
+	}
+	if err := db.Create(&ledger).Error; err != nil {
+		t.Fatalf("failed to seed ledger: %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+ledger.ID.String()+"/bills", ledgerBillRequest{
+		Name:   strPtr("Car repair"),
+		Amount: *money.New(45000, "USD"),
+	})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got ledgerBillResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode response %q: %v", rec.Body.String(), err)
+	}
+	if got.BillID != nil {
+		t.Fatalf("expected nil billId for generic expense, got %+v", got.BillID)
+	}
+	if got.Name == nil || *got.Name != "Car repair" {
+		t.Fatalf("expected name %q, got %+v", "Car repair", got.Name)
+	}
+}
+
+func TestCreateLedgerBill_NoBillIdOrName_Returns400(t *testing.T) {
+	router, db := newLedgerTestRouter(t)
+	user := seedCurrentUser(t, db)
+
+	ledger := models.Ledger{
+		UserID: user.ID, Date: time.Now(),
+		BankBalance: decimal.Zero, Income: decimal.Zero, Expenses: decimal.Zero,
+	}
+	if err := db.Create(&ledger).Error; err != nil {
+		t.Fatalf("failed to seed ledger: %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+ledger.ID.String()+"/bills", ledgerBillRequest{
+		Amount: *money.New(45000, "USD"),
+	})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetLedger_GenericExpense_NullBillInResponse(t *testing.T) {
+	router, db := newLedgerTestRouter(t)
+	user := seedCurrentUser(t, db)
+
+	ledger := models.Ledger{
+		UserID: user.ID, Date: time.Now(),
+		BankBalance: decimal.Zero, Income: decimal.Zero, Expenses: decimal.Zero,
+	}
+	if err := db.Create(&ledger).Error; err != nil {
+		t.Fatalf("failed to seed ledger: %v", err)
+	}
+	lb := models.LedgerBill{LedgerID: ledger.ID, Name: strPtr("Car repair"), Amount: decimal.NewFromInt(450)}
+	if err := db.Create(&lb).Error; err != nil {
+		t.Fatalf("failed to seed generic expense ledger bill: %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodGet, "/ledgers/"+ledger.ID.String(), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var got ledgerDetailResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode response %q: %v", rec.Body.String(), err)
+	}
+	if len(got.LedgerBills) != 1 {
+		t.Fatalf("expected 1 nested ledger bill, got %+v", got.LedgerBills)
+	}
+	entry := got.LedgerBills[0]
+	if entry.Bill != nil {
+		t.Fatalf("expected nil bill for generic expense, got %+v", entry.Bill)
+	}
+	if entry.Name == nil || *entry.Name != "Car repair" {
+		t.Fatalf("expected name %q, got %+v", "Car repair", entry.Name)
+	}
+}
+
+func TestUpdateLedgerBill_GenericExpense_UpdatesName(t *testing.T) {
+	router, db := newLedgerTestRouter(t)
+	user := seedCurrentUser(t, db)
+
+	ledger := models.Ledger{
+		UserID: user.ID, Date: time.Now(),
+		BankBalance: decimal.Zero, Income: decimal.Zero, Expenses: decimal.Zero,
+	}
+	if err := db.Create(&ledger).Error; err != nil {
+		t.Fatalf("failed to seed ledger: %v", err)
+	}
+	lb := models.LedgerBill{LedgerID: ledger.ID, Name: strPtr("Car repair"), Amount: decimal.NewFromInt(450)}
+	if err := db.Create(&lb).Error; err != nil {
+		t.Fatalf("failed to seed generic expense ledger bill: %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodPut, "/ledgers/"+ledger.ID.String()+"/bills/"+lb.ID.String(), ledgerBillRequest{
+		Name:   strPtr("Car repair (updated)"),
+		Amount: *money.New(45000, "USD"),
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got ledgerBillResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode response %q: %v", rec.Body.String(), err)
+	}
+	if got.Name == nil || *got.Name != "Car repair (updated)" {
+		t.Fatalf("expected updated name, got %+v", got.Name)
+	}
+}
+
 // --- /ledgers/current and /ledgers/history
 
 func seedLedgerBill(t *testing.T, db *gorm.DB, userID, ledgerID uuid.UUID, amount decimal.Decimal, isPayed bool) models.LedgerBill {
@@ -443,7 +566,7 @@ func seedLedgerBill(t *testing.T, db *gorm.DB, userID, ledgerID uuid.UUID, amoun
 	if err := db.Create(&bill).Error; err != nil {
 		t.Fatalf("failed to seed bill: %v", err)
 	}
-	ledgerBill := models.LedgerBill{LedgerID: ledgerID, BillID: bill.ID, Amount: amount, IsPayed: isPayed}
+	ledgerBill := models.LedgerBill{LedgerID: ledgerID, BillID: &bill.ID, Amount: amount, IsPayed: isPayed}
 	if err := db.Create(&ledgerBill).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}

@@ -274,7 +274,8 @@ export interface LedgerInput {
 export interface LedgerBill {
   id: string
   ledgerId: string
-  billId: string
+  billId: string | null
+  name: string | null
   amount: Money
   dueDay: number | null
   isPayed: boolean
@@ -284,15 +285,18 @@ export interface LedgerBill {
 }
 
 export interface LedgerBillInput {
-  billId: string
+  billId: string | null
+  name: string | null
   amount: Money
   dueDay: number | null
   isPayed: boolean
   notes: string | null
 }
 
+// bill is null for a generic expense (no catalog Bill behind it) — the
+// ledger-bill's own name is the display label in that case.
 export interface LedgerBillWithBill extends LedgerBill {
-  bill: Bill
+  bill: Bill | null
 }
 
 export interface LedgerDetail extends Ledger {
@@ -317,7 +321,8 @@ interface RawLedger {
 interface RawLedgerBill {
   id: string
   ledgerId: string
-  billId: string
+  billId: string | null
+  name: string | null
   amount: RawMoney
   dueDay: number | null
   isPayed: boolean
@@ -328,7 +333,7 @@ interface RawLedgerBill {
 
 interface RawLedgerDetail extends RawLedger {
   incomes: RawIncome[]
-  ledgerBills: (RawLedgerBill & { bill: RawBill })[]
+  ledgerBills: (RawLedgerBill & { bill: RawBill | null })[]
 }
 
 function toLedger(raw: RawLedger): Ledger {
@@ -352,7 +357,7 @@ function toLedgerDetail(raw: RawLedgerDetail): LedgerDetail {
     incomes: raw.incomes.map(toIncome),
     ledgerBills: raw.ledgerBills.map((lb) => ({
       ...toLedgerBill(lb),
-      bill: toBill(lb.bill),
+      bill: lb.bill ? toBill(lb.bill) : null,
     })),
   }
 }
@@ -371,6 +376,7 @@ function toLedgerBody(input: LedgerInput) {
 function toLedgerBillBody(input: LedgerBillInput) {
   return {
     billId: input.billId,
+    name: input.name,
     amount: toRawMoney(input.amount),
     dueDay: input.dueDay,
     isPayed: input.isPayed,

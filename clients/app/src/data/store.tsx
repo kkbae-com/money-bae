@@ -65,7 +65,15 @@ export interface ToastMessage {
   text: string
 }
 
-const TOAST_DURATION_MS = 4000
+// info toasts are good-news/success acks (e.g. "duplicated that bill") —
+// glance-and-move-on. error/warning ones report something that needs
+// attention (a failed save, a required selection), so they get longer to
+// actually read before they auto-dismiss.
+const TOAST_DURATION_MS: Record<ToastKind, number> = {
+  info: 500,
+  warning: 5000,
+  error: 6000,
+}
 
 export interface PendingDelete {
   count: number
@@ -196,7 +204,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => [...prev, { id, kind, text }])
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, TOAST_DURATION_MS)
+    }, TOAST_DURATION_MS[kind])
   }
 
   function dismissToast(id: string) {

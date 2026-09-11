@@ -38,6 +38,12 @@ function ToastOverlay({ id, kind, text }: ToastMessage) {
         >
           {text}
         </span>
+        <button
+          className="btn btn-primary mono"
+          onClick={() => store.dismissToast(id)}
+        >
+          kk bae!
+        </button>
       </div>
     </div>
   )

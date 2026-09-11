@@ -69,6 +69,32 @@ var All = []*gormigrate.Migration{
 			return nil
 		},
 	},
+	{
+		// Lets a ledger_bill be a "generic expense": a one-off cost scoped
+		// to just one ledger cycle, with no catalog Bill behind it. bill_id
+		// becomes optional, and name carries the display label in that case
+		// (models.LedgerBill.Name — ignored when bill_id is set, since the
+		// catalog Bill's own name is used instead).
+		ID: "20260910000000_ledger_bills_generic_expense",
+		Migrate: func(tx *gorm.DB) error {
+			if err := tx.Exec("ALTER TABLE ledger_bills ALTER COLUMN bill_id DROP NOT NULL").Error; err != nil {
+				return fmt.Errorf("dropping ledger_bills.bill_id not-null constraint: %w", err)
+			}
+			if err := tx.Exec("ALTER TABLE ledger_bills ADD COLUMN name text").Error; err != nil {
+				return fmt.Errorf("adding ledger_bills.name column: %w", err)
+			}
+			return nil
+		},
+		Rollback: func(tx *gorm.DB) error {
+			if err := tx.Exec("ALTER TABLE ledger_bills DROP COLUMN name").Error; err != nil {
+				return fmt.Errorf("dropping ledger_bills.name column: %w", err)
+			}
+			if err := tx.Exec("ALTER TABLE ledger_bills ALTER COLUMN bill_id SET NOT NULL").Error; err != nil {
+				return fmt.Errorf("restoring ledger_bills.bill_id not-null constraint: %w", err)
+			}
+			return nil
+		},
+	},
 }
 
 // Run applies the initial schema (via InitSchema, GORM's AutoMigrate against

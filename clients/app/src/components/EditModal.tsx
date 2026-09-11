@@ -23,11 +23,16 @@ const MODAL_NOUN = {
   bill: 'bill',
   income: 'income entry',
   ledger: 'ledger cycle',
-  ledgerBill: 'bill in cycle',
+  ledgerBill: 'bill/expense to cycle',
   pto: 'PTO entry',
   ptoYear: 'PTO year',
   holiday: 'holiday',
 } as const
+
+// Sentinel value for the "Generic expense" option in the Bill select — a
+// one-off expense scoped to just this ledger, with no catalog Bill behind
+// it. Distinct from '' (the disabled "Select a bill…" placeholder).
+const GENERIC_EXPENSE_VALUE = '__generic__'
 
 export function EditModal() {
   const store = useAppStore()
@@ -52,6 +57,7 @@ export function EditModal() {
   })
   const [ledgerBillForm, setLedgerBillForm] = useState({
     billId: '',
+    name: '',
     amount: '',
     dueDay: '',
     isPayed: false,
@@ -143,13 +149,21 @@ export function EditModal() {
     setLedgerBillForm(
       existing
         ? {
-            billId: existing.billId,
+            billId: existing.billId ?? GENERIC_EXPENSE_VALUE,
+            name: existing.name ?? '',
             amount: moneyToNumber(existing.amount).toFixed(2),
             dueDay: existing.dueDay != null ? String(existing.dueDay) : '',
             isPayed: existing.isPayed,
             notes: existing.notes ?? '',
           }
-        : { billId: '', amount: '', dueDay: '', isPayed: false, notes: '' },
+        : {
+            billId: '',
+            name: '',
+            amount: '',
+            dueDay: '',
+            isPayed: false,
+            notes: '',
+          },
     )
   }, [store.modal, store.modalMode, store.selectedLedgerBill])
 
@@ -284,14 +298,16 @@ export function EditModal() {
           : await store.editLedgerEntry(input)
       if (!ok) return
     } else if (store.modal === 'ledgerBill') {
+      const isGenericExpense = ledgerBillForm.billId === GENERIC_EXPENSE_VALUE
       const input: LedgerBillInput = {
-        billId: ledgerBillForm.billId,
+        billId: isGenericExpense ? null : ledgerBillForm.billId || null,
+        name: isGenericExpense ? ledgerBillForm.name : null,
         amount: numberToMoney(Number(ledgerBillForm.amount) || 0),
         dueDay: ledgerBillForm.dueDay ? Number(ledgerBillForm.dueDay) : null,
         isPayed: ledgerBillForm.isPayed,
         notes: ledgerBillForm.notes || null,
       }
-      if (!input.billId) return
+      if (!input.billId && !input.name) return
       const ok =
         store.modalMode === 'Add'
           ? await store.addLedgerBillEntry(input)
@@ -580,34 +596,71 @@ export function EditModal() {
           <div className="flex flex-col gap-[11px]">
             <div className="field">
               <label>Bill</label>
-              <select
-                className="input mono"
-                value={ledgerBillForm.billId}
-                onChange={(e) => {
-                  const billId = e.target.value
-                  const bill = store.bills.find((b) => b.id === billId)
-                  setLedgerBillForm((f) => ({
-                    ...f,
-                    billId,
-                    amount: bill
-                      ? moneyToNumber(bill.amount).toFixed(2)
-                      : f.amount,
-                    dueDay:
-                      bill?.dueDay != null ? String(bill.dueDay) : f.dueDay,
-                  }))
-                }}
-                disabled={store.modalMode === 'Edit'}
-              >
-                <option value="" disabled>
-                  Select a bill…
-                </option>
-                {store.bills.map((bill) => (
-                  <option key={bill.id} value={bill.id}>
-                    {bill.name}
+              {store.modalMode === 'Edit' ? (
+                // Which bill/expense an entry is tied to can't change after
+                // creation — a disabled <select> still looks interactive
+                // (and is easy to misread), so show the resolved name as
+                // plain locked text instead.
+                <input
+                  className="input mono"
+                  value={
+                    store.selectedLedgerBill?.bill?.name ??
+                    store.selectedLedgerBill?.name ??
+                    ''
+                  }
+                  disabled
+                />
+              ) : (
+                <select
+                  className="input mono"
+                  value={ledgerBillForm.billId}
+                  onChange={(e) => {
+                    const billId = e.target.value
+                    if (billId === GENERIC_EXPENSE_VALUE) {
+                      setLedgerBillForm((f) => ({ ...f, billId }))
+                      return
+                    }
+                    const bill = store.bills.find((b) => b.id === billId)
+                    setLedgerBillForm((f) => ({
+                      ...f,
+                      billId,
+                      amount: bill
+                        ? moneyToNumber(bill.amount).toFixed(2)
+                        : f.amount,
+                      dueDay:
+                        bill?.dueDay != null ? String(bill.dueDay) : f.dueDay,
+                    }))
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a bill…
                   </option>
-                ))}
-              </select>
+                  <option value={GENERIC_EXPENSE_VALUE}>
+                    Generic Expense
+                  </option>
+                  {store.bills.map((bill) => (
+                    <option key={bill.id} value={bill.id}>
+                      {bill.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
+            {ledgerBillForm.billId === GENERIC_EXPENSE_VALUE && (
+              <div className="field">
+                <label>Name</label>
+                <input
+                  className="input"
+                  value={ledgerBillForm.name}
+                  onChange={(e) =>
+                    setLedgerBillForm((f) => ({
+                      ...f,
+                      name: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-[11px] sm:flex-row">
               <div className="field sm:flex-1">
                 <label>Amount</label>
