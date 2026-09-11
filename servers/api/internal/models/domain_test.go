@@ -47,7 +47,7 @@ func TestLedgerBill_PreloadsLedgerAndBill(t *testing.T) {
 
 	ledgerBill := models.LedgerBill{
 		LedgerID: ledger.ID,
-		BillID:   bill.ID,
+		BillID:   &bill.ID,
 		Amount:   decimal.NewFromInt(1500),
 		IsPayed:  false,
 	}

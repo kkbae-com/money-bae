@@ -181,7 +181,7 @@ func TestGetBill_IncludesLedgerBillsWithLedger(t *testing.T) {
 	if err := db.Create(&ledger).Error; err != nil {
 		t.Fatalf("failed to seed ledger: %v", err)
 	}
-	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: bill.ID, Amount: decimal.NewFromInt(150000), IsPayed: true}
+	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: &bill.ID, Amount: decimal.NewFromInt(150000), IsPayed: true}
 	if err := db.Create(&lb).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestDeleteBill_CascadesLedgerBills(t *testing.T) {
 	if err := db.Create(&ledger).Error; err != nil {
 		t.Fatalf("failed to seed ledger: %v", err)
 	}
-	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: bill.ID, Amount: decimal.NewFromInt(150000)}
+	lb := models.LedgerBill{LedgerID: ledger.ID, BillID: &bill.ID, Amount: decimal.NewFromInt(150000)}
 	if err := db.Create(&lb).Error; err != nil {
 		t.Fatalf("failed to seed ledger bill: %v", err)
 	}

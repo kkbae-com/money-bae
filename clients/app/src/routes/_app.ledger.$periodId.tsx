@@ -81,6 +81,7 @@ function LedgerItemPage() {
     try {
       await updateLedgerBill(periodId, lb.id, {
         billId: lb.billId,
+        name: lb.name,
         amount: lb.amount,
         dueDay: lb.dueDay,
         isPayed: !lb.isPayed,
@@ -102,6 +103,7 @@ function LedgerItemPage() {
           .map((lb) =>
             updateLedgerBill(periodId, lb.id, {
               billId: lb.billId,
+              name: lb.name,
               amount: lb.amount,
               dueDay: lb.dueDay,
               isPayed: true,
@@ -193,7 +195,7 @@ function LedgerItemPage() {
             className="flex flex-col items-start gap-[8px] sm:flex-row sm:items-center"
             style={{ padding: '13px 16px' }}
           >
-            <span className="card-kicker mono">bills</span>
+            <span className="card-kicker mono">bills and expenses</span>
             <span
               className="mono"
               style={{ fontSize: 11, color: 'rgba(233,233,237,.4)' }}
@@ -237,7 +239,7 @@ function LedgerItemPage() {
                       onToggle={() => billSelection.toggle(lb.id)}
                     />
                   </td>
-                  <td>{lb.bill.name}</td>
+                  <td>{lb.bill?.name ?? lb.name}</td>
                   <td className="mono" style={{ textAlign: 'right' }}>
                     {formatCurrency(moneyToNumber(lb.amount))}
                   </td>

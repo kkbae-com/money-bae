@@ -263,7 +263,7 @@ func importLedgerBills(source, target *gorm.DB, ledgerIDMap, billIDMap map[int32
 		newRow := models.LedgerBill{
 			Base:     models.Base{CreatedAt: old.CreatedAt},
 			LedgerID: newLedgerID,
-			BillID:   newBillID,
+			BillID:   &newBillID,
 			Amount:   old.Amount,
 			DueDay:   old.DueDay,
 			IsPayed:  old.IsPayed,
