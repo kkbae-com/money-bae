@@ -17,6 +17,7 @@ import {
   deleteLedgerBill,
   deletePto,
   deletePtoPlan,
+  duplicateLedger,
   listBills,
   listIncomes,
   listLedgers,
@@ -408,17 +409,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       }
     },
     duplicateLedgerEntry: async (id) => {
-      const original = ledgers.find((l) => l.id === id)
-      if (!original) return
       try {
-        const created = await createLedger({
-          date: original.date,
-          name: original.name ? `${original.name} (copy)` : null,
-          bankBalance: original.bankBalance,
-          income: original.income,
-          expenses: original.expenses,
-          notes: original.notes,
-        })
+        const created = await duplicateLedger(id)
         setLedgers((prev) => [created, ...prev])
         showToast('info', 'duplicated that ledger cycle')
       } catch (err) {

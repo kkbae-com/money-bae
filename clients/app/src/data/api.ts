@@ -417,6 +417,13 @@ export async function deleteLedger(id: string): Promise<void> {
   await request<void>(`/ledgers/${id}`, { method: 'DELETE' })
 }
 
+export async function duplicateLedger(id: string): Promise<Ledger> {
+  const raw = await request<RawLedger>(`/ledgers/${id}/duplicate`, {
+    method: 'POST',
+  })
+  return toLedger(raw)
+}
+
 export async function createLedgerBill(
   ledgerId: string,
   input: LedgerBillInput,

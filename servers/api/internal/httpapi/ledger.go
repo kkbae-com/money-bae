@@ -349,6 +349,104 @@ func updateLedgerHandler(db *gorm.DB) http.HandlerFunc {
 	}
 }
 
+// duplicateLedgerName mirrors the "(copy)" suffix the web client used to
+// append client-side (clients/app/src/data/store.tsx's old
+// duplicateLedgerEntry) — now derived server-side so it's applied
+// consistently regardless of caller.
+func duplicateLedgerName(name *string) *string {
+	if name == nil {
+		return nil
+	}
+	copied := *name + " (copy)"
+	return &copied
+}
+
+// duplicateLedgerHandler creates a new ledger cycle copied from an existing
+// one, including its LedgerBills — unlike plain createLedgerHandler, which
+// only the web client used to call for "duplicate", silently dropping the
+// bills (see issue #92). Incomes are intentionally not copied, matching
+// tui/'s duplicate_ledger (tui/src/ledger_table.rs), which only carries
+// bills forward into the new cycle.
+func duplicateLedgerHandler(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := auth.PrincipalFromContext(r.Context())
+		if !ok {
+			http.Error(w, "no authenticated user", http.StatusInternalServerError)
+			return
+		}
+
+		id, err := uuid.Parse(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		var source models.Ledger
+		err = db.Preload("LedgerBills.Bill").
+			Where("id = ? AND user_id = ?", id, principal.UserID).First(&source).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "ledger not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			internalError(w, r, "failed to look up ledger", err)
+			return
+		}
+
+		var newLedger models.Ledger
+		err = db.Transaction(func(tx *gorm.DB) error {
+			v := validatedLedger{BankBalance: source.BankBalance, Income: decimal.Zero, Expenses: decimal.Zero}
+			net := resolveNet(v)
+			total := resolveTotal(v)
+			newLedger = models.Ledger{
+				UserID:      principal.UserID,
+				Date:        source.Date,
+				Name:        duplicateLedgerName(source.Name),
+				BankBalance: source.BankBalance,
+				Income:      decimal.Zero,
+				Expenses:    decimal.Zero,
+				Net:         &net,
+				Total:       &total,
+				Notes:       source.Notes,
+			}
+			if err := tx.Create(&newLedger).Error; err != nil {
+				return err
+			}
+
+			for _, lb := range source.LedgerBills {
+				isPayed := false
+				if lb.Bill != nil {
+					isPayed = lb.Bill.IsAutoPay
+				}
+				newBill := models.LedgerBill{
+					LedgerID: newLedger.ID,
+					BillID:   lb.BillID,
+					Name:     lb.Name,
+					Amount:   lb.Amount,
+					DueDay:   lb.DueDay,
+					IsPayed:  isPayed,
+				}
+				if err := tx.Create(&newBill).Error; err != nil {
+					return err
+				}
+			}
+
+			return recalculateLedgerTotals(tx, newLedger.ID)
+		})
+		if err != nil {
+			internalError(w, r, "failed to duplicate ledger", err)
+			return
+		}
+
+		if err := db.First(&newLedger, "id = ?", newLedger.ID).Error; err != nil {
+			internalError(w, r, "failed to reload duplicated ledger", err)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, toLedgerResponse(newLedger))
+	}
+}
+
 func deleteLedgerHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := auth.PrincipalFromContext(r.Context())
