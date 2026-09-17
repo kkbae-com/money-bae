@@ -31,6 +31,7 @@ func NewRouter(db *gorm.DB, verifier auth.Verifier) http.Handler {
 	mux.Handle("POST /ledgers", requireAuth(createLedgerHandler(db)))
 	mux.Handle("GET /ledgers", requireAuth(listLedgersHandler(db)))
 	mux.Handle("GET /ledgers/{id}", requireAuth(getLedgerHandler(db)))
+	mux.Handle("POST /ledgers/{id}/duplicate", requireAuth(duplicateLedgerHandler(db)))
 	mux.Handle("PUT /ledgers/{id}", requireAuth(updateLedgerHandler(db)))
 	mux.Handle("DELETE /ledgers/{id}", requireAuth(deleteLedgerHandler(db)))
 	mux.Handle("POST /ledgers/{ledgerId}/bills", requireAuth(createLedgerBillHandler(db)))

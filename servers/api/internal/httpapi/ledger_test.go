@@ -252,6 +252,115 @@ func TestDeleteLedger_NullsIncomeLedgerIdAndCascadesLedgerBills(t *testing.T) {
 	}
 }
 
+func TestDuplicateLedger_CopiesLedgerBillsAndAppendsCopySuffix(t *testing.T) {
+	router, db := newLedgerTestRouter(t)
+	user := seedCurrentUser(t, db)
+
+	ledger := models.Ledger{
+		UserID: user.ID, Date: time.Now(), Name: strPtr("December P1"), Notes: strPtr("original notes"),
+		BankBalance: decimal.NewFromInt(1000), Income: decimal.Zero, Expenses: decimal.Zero,
+	}
+	if err := db.Create(&ledger).Error; err != nil {
+		t.Fatalf("failed to seed ledger: %v", err)
+	}
+	autoPayBill := models.Bill{UserID: user.ID, Name: "Mortgage", Amount: decimal.NewFromInt(1500), IsAutoPay: true}
+	if err := db.Create(&autoPayBill).Error; err != nil {
+		t.Fatalf("failed to seed auto-pay bill: %v", err)
+	}
+	manualBill := models.Bill{UserID: user.ID, Name: "Water", Amount: decimal.NewFromInt(50), IsAutoPay: false}
+	if err := db.Create(&manualBill).Error; err != nil {
+		t.Fatalf("failed to seed manual bill: %v", err)
+	}
+	autoPayLB := models.LedgerBill{
+		LedgerID: ledger.ID, BillID: &autoPayBill.ID, Amount: decimal.NewFromInt(1500),
+		IsPayed: true, Notes: strPtr("paid via autopay"),
+	}
+	if err := db.Create(&autoPayLB).Error; err != nil {
+		t.Fatalf("failed to seed auto-pay ledger bill: %v", err)
+	}
+	manualLB := models.LedgerBill{
+		LedgerID: ledger.ID, BillID: &manualBill.ID, Amount: decimal.NewFromInt(50), IsPayed: false,
+	}
+	if err := db.Create(&manualLB).Error; err != nil {
+		t.Fatalf("failed to seed manual ledger bill: %v", err)
+	}
+	genericLB := models.LedgerBill{
+		LedgerID: ledger.ID, Name: strPtr("Car repair"), Amount: decimal.NewFromInt(450), IsPayed: false,
+	}
+	if err := db.Create(&genericLB).Error; err != nil {
+		t.Fatalf("failed to seed generic expense ledger bill: %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+ledger.ID.String()+"/duplicate", nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	got := decodeLedgerResponse(t, rec)
+	if got.ID == ledger.ID {
+		t.Fatalf("expected a new ledger id, got the original %s", ledger.ID)
+	}
+	if got.Name == nil || *got.Name != "December P1 (copy)" {
+		t.Fatalf("expected name %q, got %+v", "December P1 (copy)", got.Name)
+	}
+	if got.Expenses.Amount() != 200000 {
+		t.Fatalf("expected expenses 2000 USD (1500+50+450), got %+v", got.Expenses)
+	}
+
+	detailRec := doJSON(t, router, http.MethodGet, "/ledgers/"+got.ID.String(), nil)
+	var detail ledgerDetailResponse
+	if err := json.Unmarshal(detailRec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("failed to decode response %q: %v", detailRec.Body.String(), err)
+	}
+	if len(detail.LedgerBills) != 3 {
+		t.Fatalf("expected 3 copied ledger bills, got %+v", detail.LedgerBills)
+	}
+	for _, lb := range detail.LedgerBills {
+		if lb.Notes != nil {
+			t.Fatalf("expected notes reset to nil on duplicate, got %+v", lb)
+		}
+		switch {
+		case lb.Bill != nil && lb.Bill.ID == autoPayBill.ID:
+			if !lb.IsPayed {
+				t.Fatalf("expected auto-pay bill copy to be marked paid, got %+v", lb)
+			}
+		case lb.Bill != nil && lb.Bill.ID == manualBill.ID:
+			if lb.IsPayed {
+				t.Fatalf("expected non-auto-pay bill copy to be unpaid, got %+v", lb)
+			}
+		case lb.Bill == nil:
+			if lb.Name == nil || *lb.Name != "Car repair" {
+				t.Fatalf("expected generic expense copy named %q, got %+v", "Car repair", lb.Name)
+			}
+			if lb.IsPayed {
+				t.Fatalf("expected generic expense copy to be unpaid, got %+v", lb)
+			}
+		default:
+			t.Fatalf("unexpected ledger bill in duplicate: %+v", lb)
+		}
+	}
+}
+
+func TestDuplicateLedger_LedgerNotOwnedByUser_Returns404(t *testing.T) {
+	router, db := newLedgerTestRouter(t)
+
+	otherUser := models.User{Sub: "auth0|other", Email: "other@example.com"}
+	if err := db.Create(&otherUser).Error; err != nil {
+		t.Fatalf("failed to seed other user: %v", err)
+	}
+	ledger := models.Ledger{
+		UserID: otherUser.ID, Date: time.Now(),
+		BankBalance: decimal.Zero, Income: decimal.Zero, Expenses: decimal.Zero,
+	}
+	if err := db.Create(&ledger).Error; err != nil {
+		t.Fatalf("failed to seed ledger: %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodPost, "/ledgers/"+ledger.ID.String()+"/duplicate", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
 // --- LedgerBill (nested)
 
 func TestCreateLedgerBill_Succeeds(t *testing.T) {
