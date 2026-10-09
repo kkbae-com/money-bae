@@ -9,6 +9,7 @@ vi.mock('@azure/msal-browser', () => {
       getAllAccounts: vi.fn(() => [{ homeAccountId: 'test-account' }]),
       acquireTokenSilent: vi.fn(),
       acquireTokenRedirect: vi.fn(),
+      clearCache: vi.fn().mockResolvedValue(undefined),
     })),
   }
 })
@@ -18,10 +19,15 @@ const { msalInstance, getAccessToken } = await import('./msalConfig')
 
 const acquireTokenSilent = vi.mocked(msalInstance.acquireTokenSilent)
 const acquireTokenRedirect = vi.mocked(msalInstance.acquireTokenRedirect)
+const clearCache = vi.mocked(msalInstance.clearCache)
+const replace = vi.fn()
 
 beforeEach(() => {
   acquireTokenSilent.mockReset()
   acquireTokenRedirect.mockReset()
+  clearCache.mockClear()
+  replace.mockReset()
+  vi.stubGlobal('window', { location: { pathname: '/', replace } })
 })
 
 describe('getAccessToken', () => {
@@ -34,16 +40,17 @@ describe('getAccessToken', () => {
     expect(acquireTokenSilent).toHaveBeenCalledTimes(1)
   })
 
-  it('redirects and rethrows when silent acquisition requires interaction', async () => {
+  it('clears the session and goes to login when silent acquisition requires interaction', async () => {
     const err = new InteractionRequiredAuthError(
       'interaction_required',
       'test-correlation-id',
     )
     acquireTokenSilent.mockRejectedValueOnce(err)
-    acquireTokenRedirect.mockResolvedValueOnce(undefined)
 
     await expect(getAccessToken()).rejects.toBe(err)
-    expect(acquireTokenRedirect).toHaveBeenCalledTimes(1)
+    expect(clearCache).toHaveBeenCalledTimes(1)
+    expect(replace).toHaveBeenCalledWith('/login')
+    expect(acquireTokenRedirect).not.toHaveBeenCalled()
   })
 
   it('retries once with a forced refresh when silent acquisition fails with a non-interaction error', async () => {
@@ -59,13 +66,14 @@ describe('getAccessToken', () => {
     expect(acquireTokenRedirect).not.toHaveBeenCalled()
   })
 
-  it('throws without redirecting when the forced retry also fails with a non-interaction error', async () => {
+  it('clears the session and goes to login when the forced retry also fails', async () => {
     acquireTokenSilent
       .mockRejectedValueOnce(new Error('monitor_window_timeout'))
       .mockRejectedValueOnce(new Error('monitor_window_timeout'))
 
     await expect(getAccessToken()).rejects.toThrow('monitor_window_timeout')
     expect(acquireTokenSilent).toHaveBeenCalledTimes(2)
-    expect(acquireTokenRedirect).not.toHaveBeenCalled()
+    expect(clearCache).toHaveBeenCalledTimes(1)
+    expect(replace).toHaveBeenCalledWith('/login')
   })
 })
