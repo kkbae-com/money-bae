@@ -31,7 +31,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') void ensureValidSession()
 })
 
-if (!rootElement.innerHTML) {
+// #app starts with the static loading screen from index.html, so guard
+// against double-mounting (HMR) with a flag instead of "is it empty".
+if (!rootElement.hasAttribute('data-mounted')) {
+  rootElement.setAttribute('data-mounted', '')
   const root = ReactDOM.createRoot(rootElement)
   root.render(
     <MsalProvider instance={msalInstance}>
