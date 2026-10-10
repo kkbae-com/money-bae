@@ -1,7 +1,7 @@
 import ReactDOM from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { MsalProvider } from '@azure/msal-react'
-import { msalInstance } from '#/auth/msalConfig'
+import { ensureValidSession, msalInstance } from '#/auth/msalConfig'
 import { routeTree } from './routeTree.gen'
 
 const router = createRouter({
@@ -24,6 +24,12 @@ const rootElement = document.getElementById('app')!
 // back here.
 await msalInstance.initialize()
 await msalInstance.handleRedirectPromise()
+// Refresh the token (or drop to login) before the app renders and fires
+// its first API request, and again whenever the user returns to the tab.
+await ensureValidSession()
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void ensureValidSession()
+})
 
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)

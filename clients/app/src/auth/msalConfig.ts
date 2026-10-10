@@ -58,11 +58,58 @@ const apiRequest = {
   ],
 }
 
+// How long a silent renewal may take before we call it dead. When the
+// refresh token has expired (hours/days away), MSAL falls back to a hidden
+// iframe that can hang for its full internal timeout; without a cap the
+// first request after returning to the tab appears to stall, then errors.
+const SILENT_TIMEOUT_MS = 8000
+
+let sessionEnding = false
+
+// The session can't be recovered silently: drop the cached account(s) and
+// send the user to the login screen. Hard navigation so every piece of
+// in-memory state (store, msal-react accounts) starts clean.
+async function endSession(): Promise<void> {
+  if (sessionEnding) return
+  sessionEnding = true
+  try {
+    await msalInstance.clearCache()
+  } catch (err) {
+    console.error('failed to clear MSAL cache', err)
+  }
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+  // The flag only dedupes concurrent callers while the cache is clearing;
+  // the navigation above unloads the page.
+  sessionEnding = false
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('silent token acquisition timed out')),
+      ms,
+    )
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+}
+
 // Used by data/api.ts for every request — acquires (silently refreshing if
 // needed) an access token for the money-bae API, scoped to whichever
 // account is currently signed in. Pass forceRefresh to bypass the cached
-// token (data/api.ts does this after a 401, in case the cached token is
-// stale in a way MSAL itself didn't detect).
+// token (data/api.ts does this after a 401). If the token can't be
+// refreshed (expired refresh token, timeout, interaction required) the
+// session is ended and the user lands on the login screen.
 export async function getAccessToken(
   options: { forceRefresh?: boolean } = {},
 ): Promise<string> {
@@ -77,25 +124,38 @@ export async function getAccessToken(
   }
 
   try {
-    const result = await msalInstance.acquireTokenSilent({
-      ...apiRequest,
-      account,
-      forceRefresh: options.forceRefresh ?? false,
-    })
+    const result = await withTimeout(
+      msalInstance.acquireTokenSilent({
+        ...apiRequest,
+        account,
+        forceRefresh: options.forceRefresh ?? false,
+      }),
+      SILENT_TIMEOUT_MS,
+    )
     return result.accessToken
   } catch (err) {
-    if (err instanceof InteractionRequiredAuthError) {
-      // Navigates away — acquireTokenRedirect never resolves on this page.
-      await msalInstance.acquireTokenRedirect({ ...apiRequest, account })
+    // Interaction required means the refresh token is dead; a failure on
+    // the forced retry means refresh isn't working. Either way, stop
+    // retrying and put the user on the login screen.
+    if (err instanceof InteractionRequiredAuthError || options.forceRefresh) {
+      await endSession()
       throw err
     }
-    // Not (yet) known to require interaction — could be a transient
-    // failure (blocked hidden iframe, network blip, a concurrent renewal
-    // already in flight elsewhere). One forced retry before giving up, so
-    // a single hiccup doesn't strand the app until a manual reload.
-    if (options.forceRefresh) {
-      throw err
-    }
+    // Possibly transient (network blip, a concurrent renewal in flight) —
+    // one forced retry before giving up.
     return getAccessToken({ forceRefresh: true })
+  }
+}
+
+// Validates the stored session up front. Called on app load and whenever
+// the tab becomes visible again, so a stale token is detected (and the
+// user sent to login) before any API call, not by the first one failing.
+export async function ensureValidSession(): Promise<void> {
+  if (msalInstance.getAllAccounts().length === 0) return
+  if (!navigator.onLine) return
+  try {
+    await getAccessToken()
+  } catch {
+    // getAccessToken already ended the session.
   }
 }
